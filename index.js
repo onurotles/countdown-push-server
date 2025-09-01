@@ -3,7 +3,6 @@ const webpush = require("web-push");
 const cors = require("cors");
 const cron = require("node-cron");
 
-const cors = require("cors");
 const app = express();
 
 // Frontend domain’ini izin ver

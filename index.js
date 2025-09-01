@@ -3,9 +3,16 @@ const webpush = require("web-push");
 const cors = require("cors");
 const cron = require("node-cron");
 
+const cors = require("cors");
 const app = express();
-app.use(cors());
+
+// Frontend domain’ini izin ver
+app.use(cors({
+  origin: "https://dugune-kalan-sure.vercel.app",
+}));
+
 app.use(express.json());
+
 
 const PORT = 4000;
 

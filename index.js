@@ -8,15 +8,29 @@ const { MongoClient } = require("mongodb");
 
 // Environment variables
 const PORT = process.env.PORT || 4000;
-const MONGO_URI = process.env.MONGO_URI; // MongoDB bağlantı stringi
+const MONGO_URI = process.env.MONGO_URI; // MongoDB connection string
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE;
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://dugune-kalan-sure.vercel.app";
 
 const app = express();
 
-// CORS
-app.use(cors({ origin: FRONTEND_URL }));
+// CORS ayarı: local ve prod için izin ver
+const allowedOrigins = [
+  FRONTEND_URL,
+  "http://localhost:3000" // local development için
+];
+
+app.use(cors({
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true); // Postman, curl vs
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = `CORS policy: ${origin} izinli değil`;
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  }
+}));
 
 app.use(express.json());
 
@@ -61,7 +75,6 @@ function calculateDaysLeft() {
 app.post("/subscribe", async (req, res) => {
   try {
     const subscription = req.body;
-    // Aynı abonelik varsa ekleme
     const exists = await subscriptionsCollection.findOne({ endpoint: subscription.endpoint });
     if (!exists) {
       await subscriptionsCollection.insertOne(subscription);
@@ -93,7 +106,7 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// 🔹 Her dakika push bildirimi göndermek için cron
+// 🔹 Cron: her dakika push bildirimi
 cron.schedule("* * * * *", async () => {
   try {
     console.log("Dakikada bir push bildirimi gönderiliyor...");
@@ -113,6 +126,5 @@ cron.schedule("* * * * *", async () => {
     console.error("Cron push hatası:", err);
   }
 });
-
 
 app.listen(PORT, () => console.log(`Push server ${PORT} portunda çalışıyor 🚀`));

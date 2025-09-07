@@ -73,11 +73,11 @@ function calculateDaysLeft() {
 
 // Subscribe endpoint
 app.post("/subscribe", async (req, res) => {
-  try {
-    if (!subscriptionsCollection) {
-      return res.status(503).json({ message: "DB henüz hazır değil" });
-    }
+  if (!subscriptionsCollection) {
+    return res.status(503).json({ message: "DB henüz hazır değil" });
+  }
 
+  try {
     const subscription = req.body;
     const exists = await subscriptionsCollection.findOne({ endpoint: subscription.endpoint });
     if (!exists) {
@@ -85,10 +85,11 @@ app.post("/subscribe", async (req, res) => {
     }
     res.status(201).json({ message: "Abone kaydedildi ✅" });
   } catch (err) {
-    console.error("Subscribe error:", err);
+    console.error(err);
     res.status(500).json({ message: "Abone kaydedilemedi ❌" });
   }
 });
+
 
 
 // Send push manually

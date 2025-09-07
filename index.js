@@ -1,35 +1,49 @@
+require('dotenv').config();
+
 const express = require("express");
 const webpush = require("web-push");
 const cors = require("cors");
 const cron = require("node-cron");
+const { MongoClient } = require("mongodb");
+
+// Environment variables
+const PORT = process.env.PORT || 4000;
+const MONGO_URI = process.env.MONGO_URI; // MongoDB bağlantı stringi
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC;
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE;
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://dugune-kalan-sure.vercel.app";
 
 const app = express();
 
-// Frontend domain’ini izin ver
-app.use(cors({
-  origin: "https://dugune-kalan-sure.vercel.app",
-}));
+// CORS
+app.use(cors({ origin: FRONTEND_URL }));
 
 app.use(express.json());
 
+// MongoDB setup
+const client = new MongoClient(MONGO_URI);
+let subscriptionsCollection;
 
-const PORT = 4000;
+async function initDB() {
+  await client.connect();
+  const db = client.db("countdownDB");
+  subscriptionsCollection = db.collection("subscriptions");
+  console.log("MongoDB connected ✅");
+}
 
-// 1. VAPID key üret
+initDB().catch(console.error);
+
+// VAPID setup
 webpush.setVapidDetails(
   'mailto:onurotles@gmail.com',
-  'BJdmdS87qYiSR-beG-ugV7PwZx5LMVo0tsGbKxRtpKR-GuB57LcIYogZQQpCVfjNEGj1ozBnou9z5pYlmPDHgn8',
-  '-HP1acqoSxtqEuGuhBQnr448A5Iv3912csUff-l78JM'
+  VAPID_PUBLIC,
+  VAPID_PRIVATE
 );
 
-// Abonelikleri saklamak için basit array (prod’da DB kullan)
-let subscriptions = [];
-
-// Hedef ve başlangıç tarih
+// Target date
 const startDate = new Date("2025-07-04T00:00:00");
 const targetDate = new Date("2026-07-04T00:00:00");
 
-// Fonksiyonlar
 function calculateProgress() {
   const now = new Date();
   const totalDuration = targetDate.getTime() - startDate.getTime();
@@ -43,50 +57,65 @@ function calculateDaysLeft() {
   return Math.max(Math.ceil(diff / (1000 * 60 * 60 * 24)), 0);
 }
 
-// Abonelik alma endpoint
-app.post("/subscribe", (req, res) => {
-  const subscription = req.body;
-  subscriptions.push(subscription);
-  res.status(201).json({ message: "Abone kaydedildi ✅" });
+// Subscribe endpoint
+app.post("/subscribe", async (req, res) => {
+  try {
+    const subscription = req.body;
+    // Aynı abonelik varsa ekleme
+    const exists = await subscriptionsCollection.findOne({ endpoint: subscription.endpoint });
+    if (!exists) {
+      await subscriptionsCollection.insertOne(subscription);
+    }
+    res.status(201).json({ message: "Abone kaydedildi ✅" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Abone kaydedilemedi ❌" });
+  }
 });
 
-// Test bildirimi endpoint
+// Send push manually
 app.post("/send", async (req, res) => {
-  const notificationPayload = JSON.stringify({
-    title: "Merhaba!",
-    body: "Bu bir test bildirimi 🎉",
-  });
+  try {
+    const allSubs = await subscriptionsCollection.find({}).toArray();
+    const notificationPayload = JSON.stringify({
+      title: "Merhaba!",
+      body: "Bu bir test bildirimi 🎉",
+    });
 
-  const sendNotifications = subscriptions.map((sub) =>
-    webpush.sendNotification(sub, notificationPayload).catch((err) => {
-      console.error("Push gönderilemedi:", err);
-    })
-  );
-
-  await Promise.all(sendNotifications);
-  res.status(200).json({ message: "OK" });
+    const sendNotifications = allSubs.map(sub =>
+      webpush.sendNotification(sub, notificationPayload).catch(console.error)
+    );
+    await Promise.all(sendNotifications);
+    res.status(200).json({ message: "Push gönderildi ✅" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Push gönderilemedi ❌" });
+  }
 });
 
-// 🔹 Günlük otomatik push (cron)
+// Günlük cron push (09:00 UTC)
 cron.schedule("0 9 * * *", async () => {
-  console.log("Günlük push bildirimi gönderiliyor...");
+  try {
+    console.log("Günlük push bildirimi gönderiliyor...");
 
-  const progress = calculateProgress().toFixed(1);
-  const daysLeft = calculateDaysLeft();
+    const progress = calculateProgress().toFixed(1);
+    const daysLeft = calculateDaysLeft();
 
-  const notificationPayload = JSON.stringify({
-    title: "Günlük Countdown Bildirimi",
-    body: `Şu an progress: %${progress}, hedef tarihe ${daysLeft} gün kaldı! 📅`,
-  });
+    const notificationPayload = JSON.stringify({
+      title: "Günlük Countdown Bildirimi",
+      body: `Şu an progress: %${progress}, hedef tarihe ${daysLeft} gün kaldı! 📅`,
+    });
 
-  const sendNotifications = subscriptions.map((sub) =>
-    webpush.sendNotification(sub, notificationPayload).catch((err) => {
-      console.error("Push gönderilemedi:", err);
-    })
-  );
+    const allSubs = await subscriptionsCollection.find({}).toArray();
+    const sendNotifications = allSubs.map(sub =>
+      webpush.sendNotification(sub, notificationPayload).catch(console.error)
+    );
+    await Promise.all(sendNotifications);
 
-  await Promise.all(sendNotifications);
-  console.log("Push bildirimi gönderildi ✅");
+    console.log("Push bildirimi gönderildi ✅");
+  } catch (err) {
+    console.error("Cron push hatası:", err);
+  }
 });
 
 app.listen(PORT, () => console.log(`Push server ${PORT} portunda çalışıyor 🚀`));

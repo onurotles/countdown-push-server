@@ -93,29 +93,26 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// Günlük cron push (09:00 UTC)
-cron.schedule("0 9 * * *", async () => {
+// 🔹 Her dakika push bildirimi göndermek için cron
+cron.schedule("* * * * *", async () => {
   try {
-    console.log("Günlük push bildirimi gönderiliyor...");
-
+    console.log("Dakikada bir push bildirimi gönderiliyor...");
     const progress = calculateProgress().toFixed(1);
     const daysLeft = calculateDaysLeft();
 
-    const notificationPayload = JSON.stringify({
-      title: "Günlük Countdown Bildirimi",
+    const payload = JSON.stringify({
+      title: "Dakikada Bir Countdown Bildirimi",
       body: `Şu an progress: %${progress}, hedef tarihe ${daysLeft} gün kaldı! 📅`,
     });
 
     const allSubs = await subscriptionsCollection.find({}).toArray();
-    const sendNotifications = allSubs.map(sub =>
-      webpush.sendNotification(sub, notificationPayload).catch(console.error)
-    );
-    await Promise.all(sendNotifications);
+    await Promise.all(allSubs.map(sub => webpush.sendNotification(sub, payload).catch(console.error)));
 
     console.log("Push bildirimi gönderildi ✅");
   } catch (err) {
     console.error("Cron push hatası:", err);
   }
 });
+
 
 app.listen(PORT, () => console.log(`Push server ${PORT} portunda çalışıyor 🚀`));

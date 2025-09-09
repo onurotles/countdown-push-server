@@ -30,7 +30,7 @@ async function initDB() {
   await client.connect({
   serverSelectionTimeoutMS: 5000,
   tls: true,
-  tlsAllowInvalidCertificates: false
+  tlsAllowInvalidCertificates: true
 });
 
   const db = client.db("countdownDB");

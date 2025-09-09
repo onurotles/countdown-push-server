@@ -1,4 +1,4 @@
-require('dotenv').config();
+require("dotenv").config();
 
 const express = require("express");
 const webpush = require("web-push");
@@ -11,26 +11,26 @@ const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI; // MongoDB connection string
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE;
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://dugune-kalan-sure.vercel.app";
+const FRONTEND_URL =
+  process.env.FRONTEND_URL || "https://dugune-kalan-sure.vercel.app";
 
 const app = express();
 
 // CORS ayarı: local ve prod için izin ver
-const allowedOrigins = [
-  FRONTEND_URL,
-  "http://localhost:3000" // local development için
-];
+const allowedOrigins = [FRONTEND_URL, "http://localhost:3000"]; // local development için
 
-app.use(cors({
-  origin: function(origin, callback){
-    if(!origin) return callback(null, true); // Postman, curl vs
-    if(allowedOrigins.indexOf(origin) === -1){
-      const msg = `CORS policy: ${origin} izinli değil`;
-      return callback(new Error(msg), false);
-    }
-    return callback(null, true);
-  }
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // Postman, curl vs
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg = `CORS policy: ${origin} izinli değil`;
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+  })
+);
 
 app.use(express.json());
 
@@ -38,18 +38,9 @@ app.use(express.json());
 const client = new MongoClient(MONGO_URI);
 let subscriptionsCollection;
 
-async function initDB() {
-  await client.connect();
-  const db = client.db("countdownDB");
-  subscriptionsCollection = db.collection("subscriptions");
-  console.log("MongoDB connected ✅");
-}
-
-initDB().catch(console.error);
-
 // VAPID setup
 webpush.setVapidDetails(
-  'mailto:onurotles@gmail.com',
+  "mailto:onurotles@gmail.com",
   VAPID_PUBLIC,
   VAPID_PRIVATE
 );
@@ -73,13 +64,11 @@ function calculateDaysLeft() {
 
 // Subscribe endpoint
 app.post("/subscribe", async (req, res) => {
-  if (!subscriptionsCollection) {
-    return res.status(503).json({ message: "DB henüz hazır değil" });
-  }
-
   try {
     const subscription = req.body;
-    const exists = await subscriptionsCollection.findOne({ endpoint: subscription.endpoint });
+    const exists = await subscriptionsCollection.findOne({
+      endpoint: subscription.endpoint,
+    });
     if (!exists) {
       await subscriptionsCollection.insertOne(subscription);
     }
@@ -90,8 +79,6 @@ app.post("/subscribe", async (req, res) => {
   }
 });
 
-
-
 // Send push manually
 app.post("/send", async (req, res) => {
   try {
@@ -101,7 +88,7 @@ app.post("/send", async (req, res) => {
       body: "Bu bir test bildirimi 🎉",
     });
 
-    const sendNotifications = allSubs.map(sub =>
+    const sendNotifications = allSubs.map((sub) =>
       webpush.sendNotification(sub, notificationPayload).catch(console.error)
     );
     await Promise.all(sendNotifications);
@@ -113,24 +100,51 @@ app.post("/send", async (req, res) => {
 });
 
 // 🔹 Cron: her dakika push bildirimi
-cron.schedule("* * * * *", async () => {
+function startCron() {
+  cron.schedule("* * * * *", async () => {
+    try {
+      console.log("Dakikada bir push bildirimi gönderiliyor...");
+      const progress = calculateProgress().toFixed(1);
+      const daysLeft = calculateDaysLeft();
+
+      const payload = JSON.stringify({
+        title: "Dakikada Bir Countdown Bildirimi",
+        body: `Şu an progress: %${progress}, hedef tarihe ${daysLeft} gün kaldı! 📅`,
+      });
+
+      const allSubs = await subscriptionsCollection.find({}).toArray();
+      await Promise.all(
+        allSubs.map((sub) =>
+          webpush.sendNotification(sub, payload).catch(console.error)
+        )
+      );
+
+      console.log("Push bildirimi gönderildi ✅");
+    } catch (err) {
+      console.error("Cron push hatası:", err);
+    }
+  });
+}
+
+// 🔹 DB bağlantısından sonra server + cron başlat
+async function startServer() {
   try {
-    console.log("Dakikada bir push bildirimi gönderiliyor...");
-    const progress = calculateProgress().toFixed(1);
-    const daysLeft = calculateDaysLeft();
+    await client.connect();
+    const db = client.db("countdownDB");
+    subscriptionsCollection = db.collection("subscriptions");
+    console.log("MongoDB connected ✅");
 
-    const payload = JSON.stringify({
-      title: "Dakikada Bir Countdown Bildirimi",
-      body: `Şu an progress: %${progress}, hedef tarihe ${daysLeft} gün kaldı! 📅`,
-    });
+    // Server başlat
+    app.listen(PORT, () =>
+      console.log(`Push server ${PORT} portunda çalışıyor 🚀`)
+    );
 
-    const allSubs = await subscriptionsCollection.find({}).toArray();
-    await Promise.all(allSubs.map(sub => webpush.sendNotification(sub, payload).catch(console.error)));
-
-    console.log("Push bildirimi gönderildi ✅");
+    // Cron başlat
+    startCron();
   } catch (err) {
-    console.error("Cron push hatası:", err);
+    console.error("DB bağlantı hatası ❌", err);
+    process.exit(1);
   }
-});
+}
 
-app.listen(PORT, () => console.log(`Push server ${PORT} portunda çalışıyor 🚀`));
+startServer();

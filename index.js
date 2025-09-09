@@ -39,8 +39,8 @@ const Subscription = mongoose.model('Subscription', subscriptionSchema);
 // ✅ VAPID key setup
 webpush.setVapidDetails(
     'mailto:onurotles@gmail.com',
-    process.env.VAPID_PUBLIC,
-    process.env.VAPID_PRIVATE
+    process.env.PUBLIC_KEY,
+    process.env.PRIVATE_KEY
 );
 
 // ✅ Subscribe endpoint

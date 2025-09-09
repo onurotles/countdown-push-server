@@ -27,7 +27,12 @@ let subscriptionsCollection;
 // MongoDB başlat
 async function initDB() {
   const client = new MongoClient(MONGO_URI);
-  await client.connect();
+  await client.connect({
+  serverSelectionTimeoutMS: 5000,
+  tls: true,
+  tlsAllowInvalidCertificates: false
+});
+
   const db = client.db("countdownDB");
   subscriptionsCollection = db.collection("subscriptions");
   console.log("MongoDB connected ✅");

@@ -21,10 +21,12 @@ app.use(cors({
     }
 }));
 
+async function startServer() {
 // ✅ MongoDB bağlantısı
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("MongoDB bağlantısı başarılı ✅"))
-    .catch(err => console.error("MongoDB bağlantı hatası ❌", err));
+  await mongoose.connect(process.env.MONGO_URI)
+          .then(() => console.log("MongoDB bağlantısı başarılı ✅"))
+          .catch(err => console.error("MongoDB bağlantı hatası ❌", err));
+}
 
 // ✅ Abonelik schema
 const subscriptionSchema = new mongoose.Schema({
@@ -42,6 +44,8 @@ webpush.setVapidDetails(
     process.env.PUBLIC_KEY,
     process.env.PRIVATE_KEY
 );
+
+startServer();
 
 // ✅ Subscribe endpoint
 app.post('/subscribe', async (req, res) => {

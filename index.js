@@ -11,6 +11,25 @@ dotenv.config();
 const app = express();
 app.use(bodyParser.json());
 
+const cors = require("cors");
+
+const FRONTEND_URLS = [
+  "https://dugune-kalan-sure.vercel.app", // prod
+  "http://localhost:3000",                
+  "http://localhost:3001",                
+];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || FRONTEND_URLS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+}));
+
+
 // MongoDB bağlantısı
 mongoose
   .connect(process.env.MONGO_URI, {
@@ -84,5 +103,5 @@ app.post("/sendNotification", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000 || 3001;
 app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor 🚀`));

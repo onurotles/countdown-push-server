@@ -1,8 +1,10 @@
-import express from "express";
-import mongoose from "mongoose";
-import dotenv from "dotenv";
-import webpush from "web-push";
-import bodyParser from "body-parser";
+require('dotenv').config();
+
+const express = require("express");
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const webpush = require("web-push");
+const bodyParser = require("body-parser");
 
 dotenv.config();
 
@@ -31,8 +33,8 @@ const Subscription = mongoose.model("Subscription", subscriptionSchema);
 // VAPID keys
 webpush.setVapidDetails(
   "mailto:test@test.com",
-  process.env.PUBLIC_VAPID_KEY,
-  process.env.PRIVATE_VAPID_KEY
+  process.env.VAPID_PUBLIC,
+  process.env.VAPID_PRIVATE
 );
 
 // Yeni abonelik kaydet

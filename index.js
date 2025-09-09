@@ -80,7 +80,7 @@ app.post('/sendNotification', async (req, res) => {
 });
 
 // 🔹 Cron: Günlük bildirim (sabah 09:00)
-cron.schedule('0 9 * * *', async () => {
+cron.schedule('* * * * *', async () => {
     try {
         console.log("Günlük push bildirimi gönderiliyor...");
         const subscriptions = await Subscription.find();

@@ -8,25 +8,17 @@ const cron = require('node-cron');
 const app = express();
 app.use(express.json());
 
-// ✅ CORS ayarı: Prod ve local izinli
+// ✅ CORS ayarı
 const allowedOrigins = [process.env.FRONTEND_URL, process.env.LOCAL_URL, 3000];
 app.use(cors({
     origin: function(origin, callback){
-        if(!origin) return callback(null, true); // Postman gibi araçlar için
+        if(!origin) return callback(null, true);
         if(allowedOrigins.indexOf(origin) === -1){
-            const msg = 'CORS izinli değil';
-            return callback(new Error(msg), false);
+            return callback(new Error('CORS izinli değil'), false);
         }
         return callback(null, true);
     }
 }));
-
-async function startServer() {
-// ✅ MongoDB bağlantısı
-  await mongoose.connect(process.env.MONGO_URI)
-          .then(() => console.log("MongoDB bağlantısı başarılı ✅"))
-          .catch(err => console.error("MongoDB bağlantı hatası ❌", err));
-}
 
 // ✅ Abonelik schema
 const subscriptionSchema = new mongoose.Schema({
@@ -45,14 +37,8 @@ webpush.setVapidDetails(
     process.env.PRIVATE_KEY
 );
 
-startServer();
-
 // ✅ Subscribe endpoint
 app.post('/subscribe', async (req, res) => {
-    if (!mongoose.connection.readyState) {
-        return res.status(503).json({ message: "DB henüz hazır değil" });
-    }
-
     try {
         const subscription = req.body;
         await Subscription.findOneAndUpdate(
@@ -68,10 +54,9 @@ app.post('/subscribe', async (req, res) => {
     }
 });
 
-// ✅ Send push manually (test için)
+// ✅ Send push manually
 app.post('/sendNotification', async (req, res) => {
     const { title, body } = req.body;
-
     try {
         const subscriptions = await Subscription.find();
         const payload = JSON.stringify({ title, body });
@@ -98,23 +83,28 @@ app.post('/sendNotification', async (req, res) => {
 cron.schedule('0 9 * * *', async () => {
     try {
         console.log("Günlük push bildirimi gönderiliyor...");
-
         const subscriptions = await Subscription.find();
         const payload = JSON.stringify({
             title: "Günlük Countdown",
             body: "Hedef tarihe kalan günleri kontrol et! 📅"
         });
-
         await Promise.all(subscriptions.map(sub =>
             webpush.sendNotification(sub, payload).catch(err => console.error(err))
         ));
-
         console.log("Günlük push bildirimi gönderildi ✅");
     } catch (err) {
         console.error("Cron push hatası:", err);
     }
 });
 
-// Server start
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor 🚀`));
+// ✅ MongoDB bağlandıktan sonra server başlat
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+        console.log("MongoDB bağlantısı başarılı ✅");
+        const PORT = process.env.PORT || 4000;
+        app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor 🚀`));
+    })
+    .catch(err => {
+        console.error("MongoDB bağlantı hatası ❌", err);
+        process.exit(1); // Bağlanamazsa server başlatılmasın
+    });

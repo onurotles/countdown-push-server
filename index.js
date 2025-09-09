@@ -7,8 +7,8 @@ const cors = require("cors");
 
 const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI;
-const VAPID_PUBLIC = process.env.VAPID_PUBLIC;
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE;
+const PUBLIC_KEY = process.env.PUBLIC_KEY;
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 const app = express();
@@ -18,8 +18,8 @@ app.use(cors({ origin: FRONTEND_URL }));
 // VAPID setup
 webpush.setVapidDetails(
   "mailto:onurotles@gmail.com",
-  VAPID_PUBLIC,
-  VAPID_PRIVATE
+  PUBLIC_KEY,
+  PRIVATE_KEY
 );
 
 let subscriptionsCollection;

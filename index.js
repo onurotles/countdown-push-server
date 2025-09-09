@@ -1,107 +1,116 @@
 require('dotenv').config();
-
-const express = require("express");
-const mongoose = require("mongoose");
-const dotenv = require("dotenv");
-const webpush = require("web-push");
-const bodyParser = require("body-parser");
-
-dotenv.config();
+const express = require('express');
+const mongoose = require('mongoose');
+const webpush = require('web-push');
+const cors = require('cors');
+const cron = require('node-cron');
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
-const cors = require("cors");
-
-const FRONTEND_URLS = [
-  "https://dugune-kalan-sure.vercel.app", // prod
-  "http://localhost:3000",                
-  "http://localhost:3001",                
-];
-
+// ✅ CORS ayarı: Prod ve local izinli
+const allowedOrigins = [process.env.FRONTEND_URL, process.env.LOCAL_URL, 3000];
 app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || FRONTEND_URLS.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
+    origin: function(origin, callback){
+        if(!origin) return callback(null, true); // Postman gibi araçlar için
+        if(allowedOrigins.indexOf(origin) === -1){
+            const msg = 'CORS izinli değil';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
     }
-  },
 }));
 
+// ✅ MongoDB bağlantısı
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("MongoDB bağlantısı başarılı ✅"))
+    .catch(err => console.error("MongoDB bağlantı hatası ❌", err));
 
-// MongoDB bağlantısı
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("DB bağlantısı başarılı ✅"))
-  .catch((err) => console.error("DB bağlantı hatası ❌", err));
-
+// ✅ Abonelik schema
 const subscriptionSchema = new mongoose.Schema({
-  endpoint: String,
-  keys: {
-    p256dh: String,
-    auth: String,
-  },
+    endpoint: String,
+    keys: {
+        p256dh: String,
+        auth: String
+    }
 });
+const Subscription = mongoose.model('Subscription', subscriptionSchema);
 
-const Subscription = mongoose.model("Subscription", subscriptionSchema);
-
-// VAPID keys
+// ✅ VAPID key setup
 webpush.setVapidDetails(
-  "mailto:test@test.com",
-  process.env.VAPID_PUBLIC,
-  process.env.VAPID_PRIVATE
+    'mailto:onurotles@gmail.com',
+    process.env.VAPID_PUBLIC,
+    process.env.VAPID_PRIVATE
 );
 
-// Yeni abonelik kaydet
-app.post("/subscribe", async (req, res) => {
-  try {
-    const subscription = req.body;
-    await Subscription.findOneAndUpdate(
-      { endpoint: subscription.endpoint },
-      subscription,
-      { upsert: true }
-    );
-    console.log("Push aboneliği kaydedildi ✅");
-    res.status(201).json({ message: "Abonelik kaydedildi" });
-  } catch (err) {
-    console.error("Abonelik kaydetme hatası ❌", err);
-    res.status(500).json({ message: "Abonelik kaydedilemedi" });
-  }
-});
-
-// Bildirim gönder
-app.post("/sendNotification", async (req, res) => {
-  const { title, body } = req.body;
-
-  try {
-    const subscriptions = await Subscription.find();
-
-    for (const sub of subscriptions) {
-      try {
-        await webpush.sendNotification(
-          sub,
-          JSON.stringify({ title, body })
-        );
-      } catch (error) {
-        if (error.statusCode === 410 || error.statusCode === 404) {
-          console.log("❌ Subscription expired, siliniyor:", sub.endpoint);
-          await Subscription.deleteOne({ endpoint: sub.endpoint });
-        } else {
-          console.error("Push gönderim hatası:", error);
-        }
-      }
+// ✅ Subscribe endpoint
+app.post('/subscribe', async (req, res) => {
+    if (!mongoose.connection.readyState) {
+        return res.status(503).json({ message: "DB henüz hazır değil" });
     }
 
-    res.status(200).json({ message: "Bildirimler gönderildi" });
-  } catch (err) {
-    console.error("Bildirim gönderme hatası ❌", err);
-    res.status(500).json({ message: "Bildirim gönderilemedi" });
-  }
+    try {
+        const subscription = req.body;
+        await Subscription.findOneAndUpdate(
+            { endpoint: subscription.endpoint },
+            subscription,
+            { upsert: true }
+        );
+        console.log("Push aboneliği kaydedildi ✅");
+        res.status(201).json({ message: "Abonelik kaydedildi" });
+    } catch (err) {
+        console.error("Abonelik kaydetme hatası ❌", err);
+        res.status(500).json({ message: "Abonelik kaydedilemedi" });
+    }
 });
 
-const PORT = process.env.PORT || 3000 || 3001;
+// ✅ Send push manually (test için)
+app.post('/sendNotification', async (req, res) => {
+    const { title, body } = req.body;
+
+    try {
+        const subscriptions = await Subscription.find();
+        const payload = JSON.stringify({ title, body });
+
+        await Promise.all(subscriptions.map(sub => 
+            webpush.sendNotification(sub, payload).catch(err => {
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    console.log("❌ Subscription expired, siliniyor:", sub.endpoint);
+                    return Subscription.deleteOne({ endpoint: sub.endpoint });
+                } else {
+                    console.error("Push gönderim hatası:", err);
+                }
+            })
+        ));
+
+        res.status(200).json({ message: "Bildirimler gönderildi ✅" });
+    } catch (err) {
+        console.error("Bildirim gönderme hatası ❌", err);
+        res.status(500).json({ message: "Bildirim gönderilemedi" });
+    }
+});
+
+// 🔹 Cron: Günlük bildirim (sabah 09:00)
+cron.schedule('0 9 * * *', async () => {
+    try {
+        console.log("Günlük push bildirimi gönderiliyor...");
+
+        const subscriptions = await Subscription.find();
+        const payload = JSON.stringify({
+            title: "Günlük Countdown",
+            body: "Hedef tarihe kalan günleri kontrol et! 📅"
+        });
+
+        await Promise.all(subscriptions.map(sub =>
+            webpush.sendNotification(sub, payload).catch(err => console.error(err))
+        ));
+
+        console.log("Günlük push bildirimi gönderildi ✅");
+    } catch (err) {
+        console.error("Cron push hatası:", err);
+    }
+});
+
+// Server start
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor 🚀`));

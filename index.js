@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const webpush = require('web-push');
 const cors = require('cors');
 const cron = require('node-cron');
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(express.json());
@@ -42,6 +43,15 @@ webpush.setVapidDetails(
   process.env.PRIVATE_KEY
 );
 
+// ✅ Nodemailer transporter (Gmail)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER, // Gmail adresi
+    pass: process.env.GMAIL_PASS  // Gmail şifresi veya app password
+  }
+});
+
 // ✅ Subscribe endpoint
 app.post('/subscribe', async (req, res) => {
   try {
@@ -59,9 +69,24 @@ app.post('/subscribe', async (req, res) => {
   }
 });
 
-// ✅ Manuel push gönderme
+// ✅ Mail gönderim fonksiyonu
+async function sendMail(to, subject, text) {
+  try {
+    await transporter.sendMail({
+      from: process.env.GMAIL_USER,
+      to,
+      subject,
+      text,
+    });
+    console.log(`📧 Mail gönderildi: ${to}`);
+  } catch (err) {
+    console.error('Mail gönderim hatası ❌', err);
+  }
+}
+
+// ✅ Manuel push + mail gönderme
 app.post('/sendNotification', async (req, res) => {
-  const { title, body } = req.body;
+  const { title, body, mailTo } = req.body; // mailTo opsiyonel
   try {
     const subscriptions = await Subscription.find();
     const payload = JSON.stringify({ title, body });
@@ -77,6 +102,11 @@ app.post('/sendNotification', async (req, res) => {
       })
     ));
 
+    // Mail gönder (varsa)
+    if (mailTo) {
+      await sendMail(mailTo, title, body);
+    }
+
     res.status(200).json({ message: "Bildirimler gönderildi ✅" });
   } catch (err) {
     console.error("Bildirim gönderme hatası ❌", err);
@@ -84,7 +114,7 @@ app.post('/sendNotification', async (req, res) => {
   }
 });
 
-// ✅ CRON: Her dakika tetiklenir
+// ✅ CRON: Her dakika tetiklenir, push + mail
 cron.schedule('* * * * *', async () => {
   try {
     console.log("⏰ Cron tetiklendi — Günlük push bildirimi gönderiliyor...");
@@ -109,6 +139,9 @@ cron.schedule('* * * * *', async () => {
         }
       })
     ));
+
+    // Opsiyonel: cron mail göndermek istersen buraya ekle
+    // await sendMail("ornek@mail.com", "Günlük Countdown", "Hedef tarihe kalan günleri kontrol et!");
 
     console.log("✅ Günlük push bildirimi gönderildi");
   } catch (err) {

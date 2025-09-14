@@ -17,6 +17,7 @@
     "mongodb": "^6.19.0",
     "mongoose": "^8.18.1",
     "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.6",
     "web-push": "^3.6.7"
   }
 }

@@ -58,9 +58,14 @@ async function sendMail(to, subject, text) {
     await sendgrid.send(msg);
     console.log(`📧 Mail başarıyla gönderildi: ${to}`);
   } catch (err) {
-    console.error("❌ Mail gönderme hatası:", err);
+    if (err.response && err.response.body) {
+      console.error("❌ Mail gönderme hatası:", err.response.body);
+    } else {
+      console.error("❌ Mail gönderme hatası:", err);
+    }
   }
 }
+
 
 // ✅ Subscribe endpoint
 app.post('/subscribe', async (req, res) => {

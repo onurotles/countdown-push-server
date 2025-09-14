@@ -43,14 +43,29 @@ webpush.setVapidDetails(
   process.env.PRIVATE_KEY
 );
 
-// ✅ Nodemailer transporter (Gmail)
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER, // Gmail adresi
-    pass: process.env.GMAIL_PASS  // Gmail şifresi veya app password
+// ✅ Mail gönderme fonksiyonu
+async function sendMail(to, subject, text) {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
+      },
+    });
+
+    const info = await transporter.sendMail({
+      from: `"Countdown App" <${process.env.GMAIL_USER}>`,
+      to,
+      subject,
+      text,
+    });
+
+    console.log(`📧 Mail gönderildi: ${to} — ${info.messageId}`);
+  } catch (err) {
+    console.error("❌ Mail gönderme hatası:", err);
   }
-});
+}
 
 // ✅ Subscribe endpoint
 app.post('/subscribe', async (req, res) => {
@@ -69,28 +84,15 @@ app.post('/subscribe', async (req, res) => {
   }
 });
 
-// ✅ Mail gönderim fonksiyonu
-async function sendMail(to, subject, text) {
-  try {
-    await transporter.sendMail({
-      from: process.env.GMAIL_USER,
-      to,
-      subject,
-      text,
-    });
-    console.log(`📧 Mail gönderildi: ${to}`);
-  } catch (err) {
-    console.error('Mail gönderim hatası ❌', err);
-  }
-}
-
-// ✅ Manuel push + mail gönderme
+// ✅ Manuel push ve mail gönderme
 app.post('/sendNotification', async (req, res) => {
-  const { title, body, mailTo } = req.body; // mailTo opsiyonel
+  const { title, body, mailTo } = req.body;
+
   try {
     const subscriptions = await Subscription.find();
     const payload = JSON.stringify({ title, body });
 
+    // 🔹 Push bildirimleri
     await Promise.all(subscriptions.map(sub =>
       webpush.sendNotification(sub, payload).catch(async err => {
         if (err.statusCode === 410 || err.statusCode === 404) {
@@ -102,7 +104,7 @@ app.post('/sendNotification', async (req, res) => {
       })
     ));
 
-    // Mail gönder (varsa)
+    // 🔹 Mail gönderimi (opsiyonel)
     if (mailTo) {
       await sendMail(mailTo, title, body);
     }
@@ -114,7 +116,7 @@ app.post('/sendNotification', async (req, res) => {
   }
 });
 
-// ✅ CRON: Her dakika tetiklenir, push + mail
+// ✅ CRON: Her dakika tetiklenir
 cron.schedule('* * * * *', async () => {
   try {
     console.log("⏰ Cron tetiklendi — Günlük push bildirimi gönderiliyor...");
@@ -140,9 +142,6 @@ cron.schedule('* * * * *', async () => {
       })
     ));
 
-    // Opsiyonel: cron mail göndermek istersen buraya ekle
-    // await sendMail("ornek@mail.com", "Günlük Countdown", "Hedef tarihe kalan günleri kontrol et!");
-
     console.log("✅ Günlük push bildirimi gönderildi");
   } catch (err) {
     console.error("Cron push hatası:", err);
@@ -158,5 +157,5 @@ mongoose.connect(process.env.MONGO_URI)
   })
   .catch(err => {
     console.error("MongoDB bağlantı hatası ❌", err);
-    process.exit(1); // Bağlantı yoksa server başlatma
+    process.exit(1);
   });

@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const webpush = require('web-push');
 const cors = require('cors');
 const cron = require('node-cron');
-const nodemailer = require('nodemailer');
+const sendgrid = require('@sendgrid/mail');
 
 const app = express();
 app.use(express.json());
@@ -43,25 +43,20 @@ webpush.setVapidDetails(
   process.env.PRIVATE_KEY
 );
 
+// ✅ SendGrid setup
+sendgrid.setApiKey(process.env.SENDGRID_API_KEY);
+
 // ✅ Mail gönderme fonksiyonu
 async function sendMail(to, subject, text) {
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS,
-      },
-    });
-
-    const info = await transporter.sendMail({
-      from: `"Countdown App" <${process.env.GMAIL_USER}>`,
+    const msg = {
       to,
+      from: process.env.MAIL_FROM, // SendGrid'de onaylı bir adres olmalı
       subject,
       text,
-    });
-
-    console.log(`📧 Mail gönderildi: ${to} — ${info.messageId}`);
+    };
+    await sendgrid.send(msg);
+    console.log(`📧 Mail başarıyla gönderildi: ${to}`);
   } catch (err) {
     console.error("❌ Mail gönderme hatası:", err);
   }
@@ -141,6 +136,10 @@ cron.schedule('* * * * *', async () => {
         }
       })
     ));
+
+    // 🔹 Cron mail gönderimi (opsiyonel)
+    // Örnek: tek mail göndermek istersen
+    // await sendMail('mail@example.com', 'Günlük Countdown', 'Hedef tarihe kalan günleri kontrol et! 📅');
 
     console.log("✅ Günlük push bildirimi gönderildi");
   } catch (err) {
